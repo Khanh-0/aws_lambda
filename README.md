@@ -1,11 +1,12 @@
-# 🎨 AWS Lambda + Amazon Bedrock - AI Image Generation
+# 🎨 AWS Lambda + Amazon Bedrock - AI Image Generation with Prompt Enhancement
 
-Hệ thống sinh ảnh AI sử dụng **Stability AI SD3.5** thông qua **Amazon Bedrock**, tự động hóa hoàn toàn với AWS Lambda và lưu trữ kết quả trên S3.
+Hệ thống sinh ảnh AI sử dụng **Stability AI SD3.5** thông qua **Amazon Bedrock**, với tính năng **tự động tối ưu prompt** bằng **Amazon Nova Pro** trước khi sinh ảnh.
 
 ## ✨ Tính năng
 
 - 🖼️ **Text-to-Image**: Sinh ảnh từ mô tả văn bản
 - 🎨 **Image-to-Image**: Biến đổi ảnh có sẵn theo phong cách mới
+- 🧠 **AI Prompt Enhancement**: Tự động cải thiện prompt bằng Nova Pro (tuỳ chọn)
 - ☁️ **Serverless**: Không cần quản lý server, tự động scale
 - 💾 **Auto Storage**: Tự động lưu ảnh lên S3
 - 🚀 **Fast**: Xử lý trong vài giây
@@ -15,22 +16,31 @@ Hệ thống sinh ảnh AI sử dụng **Stability AI SD3.5** thông qua **Amazo
 
 - AWS Account với Bedrock đã được kích hoạt
 - Region: `us-west-2` (Oregon)
-- Model: `stability.sd3-5-large-v1:0` đã được enable trong Bedrock
+- Models đã enable trong Bedrock:
+  - `stability.sd3-5-large-v1:0` (sinh ảnh)
+  - `amazon.nova-pro-v1:0` (tối ưu prompt)
 - Quyền tạo: IAM Role, S3 Bucket, Lambda Function
 
 ## 🏗️ Kiến trúc hệ thống
 
 ```
-┌─────────────┐      ┌──────────────┐      ┌─────────────┐
-│   Client    │─────▶│   Lambda     │─────▶│   Bedrock   │
-│ (API/Test)  │      │ aws_gen_pic  │      │   SD3.5     │
-└─────────────┘      └──────┬───────┘      └─────────────┘
-                            │
-                     ┌──────▼────────┐
-                     │  S3 Buckets   │
-                     │ ├─ Input      │
-                     │ └─ Output     │
-                     └───────────────┘
+┌─────────────┐      ┌──────────────────┐      ┌─────────────┐
+│   Client    │─────▶│ Lambda: Enhancer │─────▶│  Nova Pro   │
+│ (API/Test)  │      │ (enhance_prompt) │      │  (LLM)      │
+└─────────────┘      └────────┬─────────┘      └─────────────┘
+                              │
+                              │ Enhanced Prompt
+                              ▼
+                     ┌──────────────────┐      ┌─────────────┐
+                     │ Lambda: GenImage │─────▶│  Bedrock    │
+                     │ (aws_gen_pic)    │      │  SD3.5      │
+                     └────────┬─────────┘      └─────────────┘
+                              │
+                       ┌──────▼────────┐
+                       │  S3 Buckets   │
+                       │ ├─ Input      │
+                       │ └─ Output     │
+                       └───────────────┘
 ```
 
 ## 🚀 Hướng dẫn cài đặt
@@ -47,7 +57,7 @@ aws s3 mb s3://gen-img-input1 --region us-west-2
 aws s3 mb s3://gen-img-out1 --region us-west-2
 ```
 
-### Bước 2: Tạo IAM Role
+### Bước 2: Tạo IAM Role cho Lambda
 
 1. Vào **AWS Console → IAM → Roles → Create role**
 2. Chọn:
@@ -55,19 +65,22 @@ aws s3 mb s3://gen-img-out1 --region us-west-2
    - **Use case**: Lambda
 3. Attach policies:
    - `AWSLambdaBasicExecutionRole`
-4. Thêm **Inline Policy** sau:
+4. Thêm **Inline Policy** sau (cho cả 2 Lambda):
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "BedrockAccess",
+      "Sid": "BedrockInvokeModels",
       "Effect": "Allow",
       "Action": [
         "bedrock:InvokeModel"
       ],
-      "Resource": "arn:aws:bedrock:us-west-2::foundation-model/stability.sd3-5-large-v1:0"
+      "Resource": [
+        "arn:aws:bedrock:us-west-2::foundation-model/stability.sd3-5-large-v1:0",
+        "arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-pro-v1:0"
+      ]
     },
     {
       "Sid": "S3ReadInput",
@@ -84,6 +97,14 @@ aws s3 mb s3://gen-img-out1 --region us-west-2
         "s3:PutObject"
       ],
       "Resource": "arn:aws:s3:::gen-img-out1/*"
+    },
+    {
+      "Sid": "LambdaInvoke",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:InvokeFunction"
+      ],
+      "Resource": "arn:aws:lambda:us-west-2:*:function:aws_gen_pic"
     }
   ]
 }
@@ -91,7 +112,7 @@ aws s3 mb s3://gen-img-out1 --region us-west-2
 
 5. Đặt tên role: `lambda-bedrock-image-gen-role`
 
-### Bước 3: Tạo Lambda Function
+### Bước 3: Tạo Lambda Function #1 - Generate Image
 
 1. Vào **AWS Console → Lambda → Create function**
 2. Cấu hình:
@@ -100,7 +121,7 @@ aws s3 mb s3://gen-img-out1 --region us-west-2
    - **Architecture**: x86_64
    - **Execution role**: Chọn role vừa tạo
 3. **Configuration**:
-   - **Timeout**: 15 seconds
+   - **Timeout**: 30 seconds
    - **Memory**: 512 MB
 4. **Environment variables**:
 
@@ -109,9 +130,7 @@ aws s3 mb s3://gen-img-out1 --region us-west-2
 | `OUTPUT_BUCKET` | `gen-img-out1` |
 | `INPUT_BUCKET` | `gen-img-input1` |
 
-### Bước 4: Deploy Lambda Code
-
-Copy code sau vào Lambda function:
+**Code cho Lambda #1** (`aws_gen_pic`):
 
 ```python
 import json
@@ -148,6 +167,7 @@ def lambda_handler(event, context):
         seed = int(body.get("seed", 0))
         model = body.get("model", "stability.sd3-5-large-v1:0")
         init_image_s3 = body.get("init_image_s3")  # Optional: for image-to-image
+        original_prompt = body.get("original_prompt")  # Track original if enhanced
         
         # Build Bedrock request
         request = {
@@ -194,22 +214,30 @@ def lambda_handler(event, context):
             ContentType="image/jpeg"
         )
         
+        # Build response
+        response_data = {
+            "message": "Image generated successfully",
+            "s3_url": f"s3://{OUTPUT_BUCKET}/{key}",
+            "bucket": OUTPUT_BUCKET,
+            "key": key,
+            "filename": filename,
+            "parameters": {
+                "prompt": prompt,
+                "model": model,
+                "aspect_ratio": aspect_ratio,
+                "seed": seed
+            }
+        }
+        
+        # Include original prompt if it was enhanced
+        if original_prompt:
+            response_data["original_prompt"] = original_prompt
+            response_data["enhanced_prompt"] = prompt
+        
         # Return success response
         return {
             "statusCode": 200,
-            "body": json.dumps({
-                "message": "Image generated successfully",
-                "s3_url": f"s3://{OUTPUT_BUCKET}/{key}",
-                "bucket": OUTPUT_BUCKET,
-                "key": key,
-                "filename": filename,
-                "parameters": {
-                    "prompt": prompt,
-                    "model": model,
-                    "aspect_ratio": aspect_ratio,
-                    "seed": seed
-                }
-            })
+            "body": json.dumps(response_data)
         }
     
     except Exception as e:
@@ -223,21 +251,194 @@ def lambda_handler(event, context):
         }
 ```
 
+### Bước 4: Tạo Lambda Function #2 - Enhance Prompt
+
+1. Vào **AWS Console → Lambda → Create function**
+2. Cấu hình:
+   - **Function name**: `enhance_prompt`
+   - **Runtime**: Python 3.11
+   - **Architecture**: x86_64
+   - **Execution role**: Dùng chung role vừa tạo
+3. **Configuration**:
+   - **Timeout**: 30 seconds
+   - **Memory**: 512 MB
+4. **Environment variables**:
+
+| Key | Value |
+|-----|-------|
+| `GEN_IMAGE_LAMBDA` | `aws_gen_pic` |
+
+**Code cho Lambda #2** (`enhance_prompt`):
+
+```python
+import json
+import boto3
+import os
+
+# Initialize AWS clients
+bedrock = boto3.client("bedrock-runtime", region_name="us-west-2")
+lambda_client = boto3.client("lambda", region_name="us-west-2")
+
+# Environment variables
+GEN_IMAGE_LAMBDA = os.environ.get("GEN_IMAGE_LAMBDA", "aws_gen_pic")
+
+# System prompt for Nova Pro to enhance image generation prompts
+ENHANCEMENT_SYSTEM_PROMPT = """You are an expert at writing prompts for Stable Diffusion image generation models.
+
+Your task is to transform user's simple prompts into detailed, high-quality prompts that will generate better images.
+
+Guidelines:
+- Keep the core concept from the original prompt
+- Add artistic details: lighting, style, mood, quality descriptors
+- Be specific about composition, camera angles, colors
+- Include quality tags like: "highly detailed", "8k", "professional", "masterpiece"
+- Keep it under 100 words
+- Do NOT add unwanted elements the user didn't ask for
+- Output ONLY the enhanced prompt, no explanations
+
+Example transformations:
+Input: "a cat"
+Output: "a majestic orange tabby cat sitting on a windowsill, golden hour lighting, soft bokeh background, highly detailed fur texture, professional photography, 8k, warm tones"
+
+Input: "cyberpunk city"
+Output: "futuristic cyberpunk city at night, neon lights reflecting on wet streets, towering skyscrapers with holographic billboards, flying cars, cinematic composition, vibrant purple and blue color palette, highly detailed, 8k, ultra realistic"
+
+Now enhance the user's prompt below."""
+
+def enhance_prompt_with_nova(user_prompt):
+    """
+    Use Amazon Nova Pro to enhance the user's prompt
+    """
+    try:
+        # Build request for Nova Pro (Converse API)
+        request = {
+            "modelId": "amazon.nova-pro-v1:0",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"text": user_prompt}
+                    ]
+                }
+            ],
+            "system": [
+                {"text": ENHANCEMENT_SYSTEM_PROMPT}
+            ],
+            "inferenceConfig": {
+                "maxTokens": 200,
+                "temperature": 0.7,
+                "topP": 0.9
+            }
+        }
+        
+        # Invoke Nova Pro using Converse API
+        response = bedrock.converse(
+            modelId="amazon.nova-pro-v1:0",
+            messages=request["messages"],
+            system=request["system"],
+            inferenceConfig=request["inferenceConfig"]
+        )
+        
+        # Extract enhanced prompt
+        enhanced_prompt = response["output"]["message"]["content"][0]["text"].strip()
+        
+        return enhanced_prompt
+    
+    except Exception as e:
+        print(f"Error enhancing prompt: {str(e)}")
+        # Fallback to original prompt if enhancement fails
+        return user_prompt
+
+def lambda_handler(event, context):
+    """
+    Main handler: Enhance prompt with Nova Pro, then call image generation Lambda
+    """
+    try:
+        # Parse request body
+        body = event.get("body")
+        if isinstance(body, str):
+            body = json.loads(body)
+        
+        # Extract parameters
+        original_prompt = body.get("prompt", "a beautiful landscape")
+        enhance = body.get("enhance_prompt", True)  # Default: enable enhancement
+        aspect_ratio = body.get("aspect_ratio", "16:9")
+        seed = body.get("seed", 0)
+        init_image_s3 = body.get("init_image_s3")
+        
+        # Step 1: Enhance prompt if requested
+        if enhance:
+            print(f"Original prompt: {original_prompt}")
+            enhanced_prompt = enhance_prompt_with_nova(original_prompt)
+            print(f"Enhanced prompt: {enhanced_prompt}")
+        else:
+            enhanced_prompt = original_prompt
+        
+        # Step 2: Build request for image generation Lambda
+        gen_request = {
+            "body": json.dumps({
+                "prompt": enhanced_prompt,
+                "aspect_ratio": aspect_ratio,
+                "seed": seed,
+                "init_image_s3": init_image_s3,
+                "original_prompt": original_prompt if enhance else None
+            })
+        }
+        
+        # Step 3: Invoke image generation Lambda
+        response = lambda_client.invoke(
+            FunctionName=GEN_IMAGE_LAMBDA,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(gen_request)
+        )
+        
+        # Parse response from image generation Lambda
+        response_payload = json.loads(response["Payload"].read())
+        
+        # Return combined response
+        return {
+            "statusCode": response_payload.get("statusCode", 200),
+            "body": response_payload.get("body")
+        }
+    
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "body": json.dumps({
+                "error": str(e),
+                "message": "Failed to enhance prompt and generate image"
+            })
+        }
+```
+
 ## 📝 Cách sử dụng
 
-### Text-to-Image (Sinh ảnh từ văn bản)
+### Option 1: Sinh ảnh KHÔNG cải thiện prompt
 
-**Request JSON:**
+Gọi trực tiếp `aws_gen_pic`:
 
 ```json
 {
-  "prompt": "a futuristic city at sunset, ultra detailed, cinematic lighting",
+  "prompt": "a cat",
   "aspect_ratio": "16:9",
   "seed": 42
 }
 ```
 
-**Response:**
+### Option 2: Sinh ảnh CÓ cải thiện prompt ⭐ (Recommended)
+
+Gọi `enhance_prompt` (sẽ tự động gọi `aws_gen_pic`):
+
+```json
+{
+  "prompt": "a cat",
+  "enhance_prompt": true,
+  "aspect_ratio": "16:9",
+  "seed": 42
+}
+```
+
+**Response mẫu**:
 
 ```json
 {
@@ -245,11 +446,11 @@ def lambda_handler(event, context):
   "body": {
     "message": "Image generated successfully",
     "s3_url": "s3://gen-img-out1/outputs/sd35_20251106_103022.jpeg",
-    "bucket": "gen-img-out1",
-    "key": "outputs/sd35_20251106_103022.jpeg",
     "filename": "sd35_20251106_103022.jpeg",
+    "original_prompt": "a cat",
+    "enhanced_prompt": "a majestic orange tabby cat sitting on a windowsill, golden hour lighting, soft bokeh background, highly detailed fur texture, professional photography, 8k, warm tones",
     "parameters": {
-      "prompt": "a futuristic city at sunset...",
+      "prompt": "a majestic orange tabby cat...",
       "model": "stability.sd3-5-large-v1:0",
       "aspect_ratio": "16:9",
       "seed": 42
@@ -258,220 +459,285 @@ def lambda_handler(event, context):
 }
 ```
 
-### Image-to-Image (Biến đổi ảnh)
-
-**Bước 1**: Upload ảnh gốc lên S3
-
-```bash
-aws s3 cp input.jpg s3://gen-img-input1/sample_input.jpeg
-```
-
-**Bước 2**: Gọi Lambda với request
+### Option 3: Tắt tính năng cải thiện prompt
 
 ```json
 {
-  "prompt": "turn this into watercolor painting style",
-  "init_image_s3": "s3://gen-img-input1/sample_input.jpeg",
-  "aspect_ratio": "1:1",
-  "seed": 99
+  "prompt": "a detailed prompt you already wrote yourself",
+  "enhance_prompt": false,
+  "aspect_ratio": "1:1"
 }
 ```
 
-## 🧪 Test Lambda Function
+### Image-to-Image với Prompt Enhancement
 
-### Test trong AWS Console
-
-1. Vào **Lambda → Functions → aws_gen_pic**
-2. Tab **Test** → Create new test event
-3. Copy JSON mẫu ở trên
-4. Click **Test**
-5. Kiểm tra kết quả trong S3: `s3://gen-img-out1/outputs/`
-
-### Test bằng AWS CLI
-
-```bash
-aws lambda invoke \
-  --function-name aws_gen_pic \
-  --payload '{"prompt":"a cyberpunk cat"}' \
-  --region us-west-2 \
-  response.json
-
-cat response.json
+```json
+{
+  "prompt": "make it look like a painting",
+  "enhance_prompt": true,
+  "init_image_s3": "s3://gen-img-input1/input.jpg",
+  "aspect_ratio": "1:1"
+}
 ```
 
-## 🌐 Tích hợp API Gateway (Tuỳ chọn)
+## 🧪 Test Lambda Functions
 
-Để gọi Lambda qua HTTP API:
+### Test Lambda #2 (Enhance + Generate)
 
-### Tạo HTTP API
+1. Vào **Lambda → enhance_prompt → Test**
+2. Tạo test event:
 
-1. Vào **API Gateway → Create API → HTTP API**
-2. **Integrations**: Add integration → Lambda → `aws_gen_pic`
-3. **Routes**: Configure route `POST /generate`
-4. **Deploy** → Copy Invoke URL
+```json
+{
+  "body": "{\"prompt\": \"a dragon\", \"enhance_prompt\": true}"
+}
+```
+
+3. Click **Test** → xem logs để thấy prompt được cải thiện
+4. Kiểm tra ảnh trong S3
+
+### Test Lambda #1 (Direct Generate)
+
+```json
+{
+  "body": "{\"prompt\": \"a detailed cyberpunk dragon with neon scales, 8k\"}"
+}
+```
+
+## 🌐 Tích hợp API Gateway
+
+### Tạo 2 Endpoints
+
+1. **API Gateway → Create API → HTTP API**
+2. Tạo 2 routes:
+
+| Route | Lambda | Mô tả |
+|-------|--------|-------|
+| `POST /generate` | `aws_gen_pic` | Sinh ảnh trực tiếp |
+| `POST /generate-enhanced` | `enhance_prompt` | Cải thiện prompt + sinh ảnh |
+
+3. **Deploy** → Copy Invoke URL
 
 ### Test với cURL
 
+**Endpoint thường**:
 ```bash
 curl -X POST https://abc123.execute-api.us-west-2.amazonaws.com/generate \
   -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "a cat astronaut in space, realistic, 4k",
-    "aspect_ratio": "16:9",
-    "seed": 42
-  }'
+  -d '{"prompt": "detailed cyberpunk cat"}'
 ```
 
-### CORS (cho Frontend)
+**Endpoint có AI enhancement** ⭐:
+```bash
+curl -X POST https://abc123.execute-api.us-west-2.amazonaws.com/generate-enhanced \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "a cat", "enhance_prompt": true}'
+```
 
-Nếu gọi từ web app, enable CORS:
+### Frontend Integration
 
-1. Trong API Gateway → **CORS**
-2. Allowed origins: `*` (hoặc domain cụ thể)
-3. Allowed methods: `POST, OPTIONS`
+```javascript
+// React/Next.js example
+const generateImage = async (userPrompt, useEnhancement = true) => {
+  const endpoint = useEnhancement 
+    ? 'https://your-api.com/generate-enhanced'
+    : 'https://your-api.com/generate';
+  
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt: userPrompt,
+      enhance_prompt: useEnhancement,
+      aspect_ratio: '16:9'
+    })
+  });
+  
+  const data = await response.json();
+  
+  return {
+    imageUrl: data.s3_url,
+    originalPrompt: data.original_prompt,
+    enhancedPrompt: data.enhanced_prompt
+  };
+};
 
-## 📊 Tham số hỗ trợ
+// Usage
+const result = await generateImage("a cat", true);
+console.log("Original:", result.originalPrompt);
+console.log("Enhanced:", result.enhancedPrompt);
+```
 
-| Tham số | Kiểu | Mặc định | Mô tả |
-|---------|------|----------|-------|
-| `prompt` | string | required | Mô tả ảnh muốn sinh |
-| `aspect_ratio` | string | `"16:9"` | Tỷ lệ ảnh: `1:1`, `16:9`, `21:9`, `2:3`, `3:2`, `4:5`, `5:4`, `9:16`, `9:21` |
-| `seed` | integer | `0` | Random seed (0 = random) |
-| `model` | string | `stability.sd3-5-large-v1:0` | Model ID |
-| `init_image_s3` | string | null | S3 path cho image-to-image |
+## 📊 So sánh 2 Workflows
+
+| Tính năng | Direct (`aws_gen_pic`) | Enhanced (`enhance_prompt`) |
+|-----------|----------------------|--------------------------|
+| **Prompt quality** | Phụ thuộc user | Tự động cải thiện ✨ |
+| **Tốc độ** | Nhanh (~5s) | Chậm hơn (~8-10s) |
+| **Chi phí** | Thấp | Cao hơn ~$0.01/request |
+| **Use case** | Prompt đã tốt | Prompt đơn giản |
+| **Output quality** | Tốt | Xuất sắc ⭐ |
 
 ## 💰 Chi phí ước tính
 
-| Dịch vụ | Chi phí | Ghi chú |
-|---------|---------|---------|
-| **Bedrock SD3.5** | ~$0.01-0.05/ảnh | Theo độ phức tạp |
-| **Lambda** | ~$0.00001/request | 512MB, 5s/request |
-| **S3 Storage** | $0.023/GB/tháng | Rất thấp |
-| **S3 Requests** | $0.0004/1000 PUT | Gần như free |
+| Dịch vụ | Không Enhancement | Có Enhancement |
+|---------|-------------------|----------------|
+| **Nova Pro LLM** | $0 | ~$0.01/request |
+| **Bedrock SD3.5** | ~$0.03/ảnh | ~$0.03/ảnh |
+| **Lambda** | ~$0.00001 | ~$0.00002 |
+| **Tổng/ảnh** | **~$0.03** | **~$0.04** |
 
-**Ví dụ**: 1000 ảnh/tháng ≈ **$10-50** (chủ yếu từ Bedrock)
+**Ví dụ**: 1000 ảnh/tháng với enhancement ≈ **$40**
 
-### Tối ưu chi phí
+## 🎨 Ví dụ Prompt Enhancement
 
-- ✅ Set **S3 Lifecycle Policy** xóa ảnh sau 7-30 ngày
-- ✅ Giảm `aspect_ratio` nếu không cần ảnh lớn
-- ✅ Cache kết quả cho prompt giống nhau (dùng DynamoDB)
-- ✅ Set Lambda timeout = 10s thay vì 15s
+### Example 1: Simple → Detailed
 
-## 🔒 Bảo mật
+| Original | Enhanced by Nova Pro |
+|----------|---------------------|
+| "a house" | "a cozy two-story Victorian house with a white picket fence, surrounded by blooming rose gardens, warm sunset lighting, autumn season, highly detailed architecture, professional real estate photography, 8k, inviting atmosphere" |
 
-### Best Practices
+### Example 2: Basic → Cinematic
 
-- ✅ Không để S3 public, dùng presigned URLs để chia sẻ
-- ✅ Giới hạn rate limit với API Gateway
-- ✅ Enable CloudWatch Logs để monitor
-- ✅ Scan prompt để tránh nội dung không phù hợp
-- ✅ Set resource-based policy cho Lambda
+| Original | Enhanced by Nova Pro |
+|----------|---------------------|
+| "space battle" | "epic space battle scene with massive starships exchanging laser fire, explosions lighting up the cosmos, debris floating in zero gravity, cinematic wide angle shot, dramatic lighting from nearby star, highly detailed spacecraft, 8k, Blade Runner meets Star Wars aesthetic" |
 
-### Ví dụ Presigned URL
+### Example 3: Character → Professional
+
+| Original | Enhanced by Nova Pro |
+|----------|---------------------|
+| "a warrior" | "a battle-hardened female warrior with intricate armor, holding a glowing sword, standing on a cliff overlooking a fantasy landscape, dramatic storm clouds, volumetric lighting, dynamic pose, highly detailed textures, fantasy art style, 8k, heroic composition" |
+
+## 🔧 Tuning System Prompt
+
+Bạn có thể chỉnh `ENHANCEMENT_SYSTEM_PROMPT` trong `enhance_prompt` Lambda để thay đổi style:
+
+### Style 1: Photography Focus
 
 ```python
-# Tạo link download tạm thời (15 phút)
-url = s3.generate_presigned_url(
-    'get_object',
-    Params={'Bucket': OUTPUT_BUCKET, 'Key': key},
-    ExpiresIn=900
-)
+ENHANCEMENT_SYSTEM_PROMPT = """You enhance prompts for photorealistic images.
+Add: camera settings, lighting, lens type, photography style.
+Example: "portrait of a woman" → "portrait of a woman, 85mm lens, f/1.4, natural window lighting, soft focus background, professional headshot, sharp details on eyes, warm color grading, editorial photography style"
+"""
 ```
 
-## 🐛 Xử lý lỗi thường gặp
+### Style 2: Artistic Focus
+
+```python
+ENHANCEMENT_SYSTEM_PROMPT = """You enhance prompts for artistic, painterly images.
+Add: art style, medium, famous artists' techniques, color palette.
+Example: "mountain" → "majestic mountain landscape in the style of Albert Bierstadt, oil painting technique, dramatic lighting with god rays, romantic era composition, rich earth tones with vibrant sky, highly detailed brushwork, masterpiece quality"
+"""
+```
+
+### Style 3: Minimal Enhancement
+
+```python
+ENHANCEMENT_SYSTEM_PROMPT = """Add only essential quality tags.
+Keep user's original concept 100% unchanged.
+Add only: "highly detailed, 8k, professional"
+"""
+```
+
+## 🐛 Troubleshooting
 
 | Lỗi | Nguyên nhân | Giải pháp |
 |-----|-------------|-----------|
-| `AccessDenied` | Thiếu quyền IAM | Kiểm tra IAM policy |
-| `ModelNotFound` | Chưa enable model trong Bedrock | Enable model tại Bedrock console |
-| `Timeout` | Lambda timeout | Tăng timeout lên 30s |
-| `NoSuchBucket` | Bucket không tồn tại | Tạo bucket hoặc sửa tên |
-| `InvalidImage` | Ảnh input lỗi | Kiểm tra format: JPEG/PNG |
+| `Model not found: nova-pro` | Chưa enable Nova Pro | Enable tại Bedrock console |
+| `Lambda timeout` | Nova Pro + SD3.5 chậm | Tăng timeout lên 60s |
+| `Invoke Lambda permission denied` | Thiếu quyền `lambda:InvokeFunction` | Thêm vào IAM policy |
+| `Enhanced prompt too long` | Nova Pro xuất quá dài | Giảm `maxTokens` xuống 150 |
 
-## 📈 Monitoring & Logs
+## 📈 Monitoring
 
 ### CloudWatch Logs
 
 ```bash
-# Xem logs gần nhất
+# Xem logs Lambda #1
 aws logs tail /aws/lambda/aws_gen_pic --follow
+
+# Xem logs Lambda #2 (có prompt enhancement)
+aws logs tail /aws/lambda/enhance_prompt --follow
 ```
 
-### CloudWatch Metrics
+### Custom Metrics
 
-- **Invocations**: Số lần gọi Lambda
-- **Duration**: Thời gian xử lý
-- **Errors**: Số lỗi
-- **Throttles**: Số lần bị rate limit
+Thêm vào Lambda để track:
 
-### Tạo CloudWatch Alarm
+```python
+import boto3
+cloudwatch = boto3.client('cloudwatch')
 
-```bash
-aws cloudwatch put-metric-alarm \
-  --alarm-name lambda-gen-pic-errors \
-  --metric-name Errors \
-  --namespace AWS/Lambda \
-  --statistic Sum \
-  --period 300 \
-  --evaluation-periods 1 \
-  --threshold 5 \
-  --comparison-operator GreaterThanThreshold
+cloudwatch.put_metric_data(
+    Namespace='ImageGeneration',
+    MetricData=[{
+        'MetricName': 'PromptEnhancementTime',
+        'Value': enhancement_duration,
+        'Unit': 'Seconds'
+    }]
+)
 ```
 
 ## 🚀 Nâng cao
 
-### 1. Frontend Integration (React)
-
-```javascript
-const generateImage = async (prompt) => {
-  const response = await fetch('https://your-api.execute-api.us-west-2.amazonaws.com/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, aspect_ratio: '16:9' })
-  });
-  
-  const data = await response.json();
-  const imageUrl = await getPresignedUrl(data.bucket, data.key);
-  return imageUrl;
-};
-```
-
-### 2. Batch Processing
-
-Sinh nhiều ảnh cùng lúc:
+### 1. A/B Testing: Enhanced vs Non-Enhanced
 
 ```python
-# Dùng SQS Queue + Lambda event source
+import random
+
+def lambda_handler(event, context):
+    # 50% traffic gets enhancement
+    use_enhancement = random.choice([True, False])
+    
+    # Track in DynamoDB for comparison
+    save_ab_test_result(use_enhancement, image_url, user_feedback)
+```
+
+### 2. Caching Enhanced Prompts
+
+```python
+import hashlib
+
+def get_cached_enhancement(original_prompt):
+    cache_key = hashlib.md5(original_prompt.encode()).hexdigest()
+    
+    # Check DynamoDB cache
+    cached = dynamodb_table.get_item(Key={'prompt_hash': cache_key})
+    
+    if cached:
+        return cached['enhanced_prompt']
+    
+    # If not cached, enhance and save
+    enhanced = enhance_prompt_with_nova(original_prompt)
+    dynamodb_table.put_item(Item={
+        'prompt_hash': cache_key,
+        'original': original_prompt,
+        'enhanced': enhanced,
+        'timestamp': datetime.now().isoformat()
+    })
+    
+    return enhanced
+```
+
+### 3. Multiple Enhancement Styles
+
+```json
 {
-  "Records": [
-    {"body": {"prompt": "prompt 1"}},
-    {"body": {"prompt": "prompt 2"}}
-  ]
+  "prompt": "a cat",
+  "enhance_prompt": true,
+  "enhancement_style": "photorealistic",
+  "styles": ["cinematic", "artistic", "photorealistic", "anime"]
 }
-```
-
-### 3. Add DynamoDB Cache
-
-Lưu metadata ảnh để tái sử dụng:
-
-```python
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table('image-cache')
-
-# Save
-table.put_item(Item={
-    'prompt_hash': hash(prompt),
-    's3_url': s3_url,
-    'timestamp': timestamp
-})
 ```
 
 ## 📚 Tài liệu tham khảo
 
 - [Amazon Bedrock Documentation](https://docs.aws.amazon.com/bedrock/)
+- [Amazon Nova Pro Model](https://aws.amazon.com/bedrock/nova/)
 - [Stability AI SD3.5 Model Card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-diffusion-stability-sd3.html)
 - [AWS Lambda Best Practices](https://docs.aws.amazon.com/lambda/latest/dg/best-practices.html)
+- [Prompt Engineering Guide](https://www.promptingguide.ai/)
 
 ## 🤝 Đóng góp
 
@@ -491,9 +757,12 @@ MIT License - free to use for personal and commercial projects.
 
 **Khánh**
 
-- Model: `stability.sd3-5-large-v1:0`
+- Models: 
+  - `amazon.nova-pro-v1:0` (Prompt Enhancement)
+  - `stability.sd3-5-large-v1:0` (Image Generation)
 - Platform: AWS Lambda + Bedrock + S3
-- Version: 1.0.0
+- Version: 2.0.0
 
 ---
 
+⭐ Nếu project này hữu ích, hãy cho một star nhé!
