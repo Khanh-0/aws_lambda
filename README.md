@@ -1,5 +1,4 @@
-Rất hay 👏 — mình sẽ giúp bạn viết một file `README.md` chuẩn để bạn đưa lên GitHub.
-File này sẽ **hướng dẫn đầy đủ** từng bước:
+
 
 * Tạo Lambda
 * Cấu hình IAM role
@@ -7,9 +6,6 @@ File này sẽ **hướng dẫn đầy đủ** từng bước:
 * Gọi model Stability SD3.5 qua Bedrock
 * Ví dụ JSON cho `text-to-image` và `image-to-image`
 
----
-
-## 📘 README.md
 
 ````markdown
 # 🧠 AWS Lambda + Bedrock Stable Diffusion 3.5 Image Generator
@@ -264,8 +260,3 @@ fields @timestamp, @message
 
 ```
 
----
-
-Bạn có muốn mình thêm luôn phần **“Cách gọi API Gateway”** (để client frontend hoặc Postman gọi Lambda sinh ảnh) vào cuối file README luôn không?  
-→ Có thể mở rộng bằng 1 route `/generate-image` gọi Lambda qua HTTP JSON body.
-```
