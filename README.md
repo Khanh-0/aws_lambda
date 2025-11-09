@@ -177,11 +177,127 @@ const generateImage = async (prompt, mode='text2img') => {
 
 ---
 
-### 5️⃣ Optional: API Gateway
+###  API Gateway
 
-* Tạo HTTP API → POST `/generate`
-* Lambda integration → `aws_gen_pic`
-* Frontend gọi trực tiếp endpoint này
+---
+
+## 🌐 Tích hợp REST API Gateway cho Lambda
+
+### 1️⃣ Tạo REST API
+
+1. Vào **AWS Console → API Gateway → Create API → REST API → Build**
+2. Đặt tên: `AIImageGenREST`
+3. API Type: `Regional`
+
+---
+
+### 2️⃣ Tạo Resource & Method
+
+1. **Resource path**: `/pro/gen`
+2. Chọn **Create Resource** → Enable “API Gateway CORS” nếu frontend gọi trực tiếp từ browser.
+3. Thêm **Method**: `POST` → Integration type: Lambda Function → chọn `aws_gen_pic`
+
+**Configuration**:
+
+| Resource   | Method | Lambda Function | Mô tả                        |
+| ---------- | ------ | --------------- | ---------------------------- |
+| `/pro/gen` | POST   | `aws_gen_pic`   | Sinh ảnh trực tiếp từ prompt |
+
+> Lưu ý: Lambda sẽ tự phân biệt **Text2Image** vs **Image2Image** dựa vào `init_image_s3`.
+
+---
+
+### 3️⃣ Enable CORS (Frontend Call)
+
+* Chọn resource `/pro/gen` → Actions → Enable CORS
+* Allow methods: `POST`
+* Allow headers: `Content-Type`
+* Save và **Deploy API**
+
+---
+
+### 4️⃣ Deploy API
+
+1. Chọn **Actions → Deploy API**
+2. Stage name: `prod`
+3. Sau khi deploy, bạn sẽ có **Invoke URL** dạng:
+
+   ```
+   https://autevn7nbg.execute-api.us-east-1.amazonaws.com/pro/gen
+   ```
+
+---
+
+### 5️⃣ Cấu trúc JSON request (REST API)
+
+**Text-to-Image trực tiếp**:
+
+```bash
+curl -X POST https://autevn7nbg.execute-api.us-east-1.amazonaws.com/pro/gen \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"a dragon flying over mountains","aspect_ratio":"16:9"}'
+```
+
+**Text-to-Image có enhancement**:
+
+```bash
+curl -X POST https://autevn7nbg.execute-api.us-east-1.amazonaws.com/pro/gen \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"a cat","enhance_prompt":true,"aspect_ratio":"16:9"}'
+```
+
+**Image-to-Image**:
+
+```bash
+curl -X POST https://autevn7nbg.execute-api.us-east-1.amazonaws.com/pro/gen \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"make it look like a watercolor","init_image_s3":"s3://gen-img-input1/input.jpg","enhance_prompt":true,"aspect_ratio":"1:1"}'
+```
+
+---
+
+### 6️⃣ Ví dụ gọi từ Frontend (React / Next.js)
+
+```javascript
+async function generateImageREST(prompt, initImage = null, useEnhancement = true) {
+  const payload = {
+    prompt,
+    enhance_prompt: useEnhancement,
+    aspect_ratio: "16:9"
+  };
+  
+  if (initImage) {
+    payload.init_image_s3 = initImage;
+  }
+
+  const res = await fetch("https://autevn7nbg.execute-api.us-east-1.amazonaws.com/pro/gen", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json();
+  return {
+    imageUrl: data.s3_url,
+    originalPrompt: data.original_prompt,
+    enhancedPrompt: data.enhanced_prompt
+  };
+}
+
+// Usage
+const result = await generateImageREST("a futuristic city", null, true);
+console.log(result);
+```
+
+---
+
+### 7️⃣ Notes
+
+1. `/pro/gen` dùng **REST API POST** cho cả Text2Image & Image2Image.
+2. Lambda tự phân biệt mode dựa vào `img2ing`,text2ing.
+3. `enhance_prompt` = `true` → Lambda sẽ nâng prompt bằng Nova Pro trước khi sinh ảnh.
+4. `aspect_ratio` mặc định `"16:9"`.
+5. `seed` có thể dùng để sinh ảnh cố định cùng prompt.
 
 ---
 
@@ -210,8 +326,4 @@ const generateImage = async (prompt, mode='text2img') => {
 * [Stability AI SD3.5 Model](https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-diffusion-stability-sd3.html)
 * [Claude 3 Model](https://www.anthropic.com/)
 
----
 
-Nếu bạn muốn, mình có thể làm **version README hoàn chỉnh có hình minh họa luồng request/response JSON, note riêng phần web coder** nữa, để copy-paste trực tiếp vào repo.
-
-Bạn có muốn mình làm luôn không?
