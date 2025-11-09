@@ -100,43 +100,14 @@ Hệ thống sinh ảnh AI sử dụng **Amazon Bedrock** với **Stability AI S
 
 ### 1️⃣ IAM Role
 
-Tạo Role cho Lambda với quyền:
+1. Vào **Lambda → Configuration → Permissions → Role name**
+   Ví dụ: `bedrockapi-role-llgc03ti`
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "bedrock:InvokeModel"
-      ],
-      "Resource": [
-        "arn:aws:bedrock:us-west-2::foundation-model/stability.sd3-5-large-v1:0",
-        "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-v2-100k:3"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "lambda:InvokeFunction"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
+2. Click **Add permissions → Attach policies**
 
-* Role này attach trực tiếp cho Lambda function.
+3. Tìm và chọn **AmazonBedrockFullAccess** + (nếu chưa có) **AWSLambdaBasicExecutionRole**
+
+4. Apply là xong, Lambda sẽ có quyền **invoke Bedrock model** + **ghi logs CloudWatch** 
 
 ---
 
