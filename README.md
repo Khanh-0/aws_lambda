@@ -1,6 +1,4 @@
-Chắc rồi! Mình sẽ giúp bạn **chỉnh lại README theo kiến trúc API mới**, bỏ Nova Pro và S3 nếu không dùng nữa, đồng thời giữ đầy đủ hướng dẫn Lambda, IAM, gọi mô hình Claude 3 trong code, cấu trúc JSON chuẩn cho web coder, kèm note dễ hiểu. Mình viết lại toàn bộ theo style gọn, rõ ràng, dễ áp dụng:
 
----
 
 # 🎨 AWS Lambda + Amazon Bedrock - AI Image Generation API
 
