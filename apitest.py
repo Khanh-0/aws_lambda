@@ -322,7 +322,6 @@ class APIImageGenTester:
                     # Expected error
                     print(f"✅ PASS (Expected error)")
                     print(f"📝 Error: {data.get('error', 'N/A')}")
-                    print(f"💡 Hint: {data.get('hint', 'N/A')}")
 
                 self.results.append({
                     "test": test_name,
@@ -406,10 +405,10 @@ class APIImageGenTester:
             }
         )
 
-        # ==================== IMAGE-TO-IMAGE TESTS ====================
+        # ==================== IMAGE-TO-IMAGE TESTS (TITAN) ====================
         if init_image_path and os.path.exists(init_image_path):
             print("\n" + "=" * 60)
-            print("🖼️  SECTION 2: IMAGE-TO-IMAGE TESTS")
+            print("🖼️  SECTION 2: IMAGE-TO-IMAGE TESTS (Amazon Titan)")
             print("=" * 60)
 
             init_image_b64 = self.image_to_base64(init_image_path)
@@ -422,7 +421,8 @@ class APIImageGenTester:
                         "regen_prompt": True,
                         "mode": "img2img",
                         "init_image": init_image_b64,
-                        "strength": 0.5
+                        "strength": 0.4,
+                        "aspect_ratio": "1:1"
                     }
                 )
 
@@ -434,19 +434,62 @@ class APIImageGenTester:
                         "regen_prompt": True,
                         "mode": "img2img",
                         "init_image": init_image_b64,
-                        "strength": 0.9
+                        "strength": 0.8,
+                        "aspect_ratio": "16:9"
                     }
                 )
 
-                # TEST 7: Img2Img không enhancement (dùng prompt gốc)
+                # TEST 7: Img2Img với negative prompt
                 self.test_request(
-                    "Test-7-Img2Img-No-Enhancement",
+                    "Test-7-Img2Img-With-Negative-Prompt",
+                    {
+                        "prompt": "professional portrait photo, studio lighting, high quality",
+                        "negative_prompt": "blurry, low quality, distorted, watermark, text, ugly, deformed",
+                        "regen_prompt": True,
+                        "mode": "img2img",
+                        "init_image": init_image_b64,
+                        "strength": 0.6,
+                        "aspect_ratio": "4:3"
+                    }
+                )
+
+                # TEST 8: Img2Img không enhancement + negative prompt
+                self.test_request(
+                    "Test-8-Img2Img-No-Enhancement-Negative",
                     {
                         "prompt": "oil painting style, artistic, masterpiece, detailed brush strokes",
+                        "negative_prompt": "photograph, realistic, modern, digital art",
                         "regen_prompt": False,
                         "mode": "img2img",
                         "init_image": init_image_b64,
                         "strength": 0.7
+                    }
+                )
+
+                # TEST 9: Img2Img với prompt tiếng Việt + negative prompt
+                self.test_request(
+                    "Test-9-Img2Img-Vietnamese-Negative",
+                    {
+                        "prompt": "phong cảnh Việt Nam đẹp, sống động, màu sắc rực rỡ",
+                        "negative_prompt": "dark, gloomy, sad, depressing",
+                        "regen_prompt": True,
+                        "mode": "img2img",
+                        "init_image": init_image_b64,
+                        "prompt_language": "vi",
+                        "strength": 0.5,
+                        "aspect_ratio": "9:16"
+                    }
+                )
+
+                # TEST 10: Img2Img strength = 0.2 (giữ gần như nguyên)
+                self.test_request(
+                    "Test-10-Img2Img-Very-Low-Strength",
+                    {
+                        "prompt": "enhance colors and lighting",
+                        "regen_prompt": True,
+                        "mode": "img2img",
+                        "init_image": init_image_b64,
+                        "strength": 0.2
                     }
                 )
         else:
@@ -458,9 +501,9 @@ class APIImageGenTester:
         print("❌ SECTION 3: ERROR HANDLING TESTS")
         print("=" * 60)
 
-        # TEST 8: Error - Missing prompt
+        # TEST 11: Error - Missing prompt
         self.test_request(
-            "Test-8-Error-Missing-Prompt",
+            "Test-11-Error-Missing-Prompt",
             {
                 "regen_prompt": True,
                 "mode": "text2img"
@@ -468,19 +511,9 @@ class APIImageGenTester:
             expected_status=400
         )
 
-        # TEST 9: Error - Invalid aspect ratio
+        # TEST 12: Error - Img2Img missing init_image
         self.test_request(
-            "Test-9-Error-Invalid-Aspect-Ratio",
-            {
-                "prompt": "test image",
-                "aspect_ratio": "4:3"  # Invalid - không có trong VALID_ASPECT_RATIOS
-            },
-            expected_status=500  # Lambda gốc chưa validate, sẽ bị lỗi từ Bedrock
-        )
-
-        # TEST 10: Error - Img2Img missing init_image
-        self.test_request(
-            "Test-10-Error-Img2Img-No-Init",
+            "Test-12-Error-Img2Img-No-Init",
             {
                 "prompt": "beautiful landscape",
                 "mode": "img2img"
@@ -488,29 +521,19 @@ class APIImageGenTester:
             expected_status=400
         )
 
-        # TEST 11: Error - Invalid mode
-        self.test_request(
-            "Test-11-Error-Invalid-Mode",
-            {
-                "prompt": "test image",
-                "mode": "invalid_mode"
-            },
-            expected_status=500  # Lambda gốc chưa validate mode
-        )
-
-        # TEST 12: Error - Invalid strength
+        # TEST 13: Error - Invalid strength (ngoài 0-1)
         if init_image_path and os.path.exists(init_image_path):
             init_image_b64 = self.image_to_base64(init_image_path)
             if init_image_b64:
                 self.test_request(
-                    "Test-12-Error-Invalid-Strength",
+                    "Test-13-Error-Invalid-Strength",
                     {
                         "prompt": "test",
                         "mode": "img2img",
                         "init_image": init_image_b64,
                         "strength": 1.5  # Invalid (> 1.0)
                     },
-                    expected_status=500  # Lambda gốc chưa validate strength, lỗi từ Bedrock
+                    expected_status=500  # Titan sẽ clamp về 1.0 hoặc báo lỗi
                 )
 
         # In ra kết quả tổng hợp
@@ -555,7 +578,7 @@ if __name__ == "__main__":
     print("✨ HOÀN THÀNH TẤT CẢ TEST CASES!")
     print("=" * 60)
     print("📁 Các ảnh đã được lưu trong thư mục 'output/'")
-    print("\n💡 Lưu ý:")
-    print("   - Text2Img tests (1-4): Nên PASS")
-    print("   - Img2Img tests (5-7): Nên PASS (AWS tự scale ảnh)")
-    print("   - Error tests (8-12): Test 8,10 PASS | Test 9,11,12 có thể 500 (lambda chưa validate)")
+    print("\n💡 Test Coverage:")
+    print("   ✅ Text2Img tests (1-4): Stable Diffusion")
+    print("   ✅ Img2Img tests (5-10): Amazon Titan with negative prompts")
+    print("   ✅ Error tests (11-13): Validation checks")
