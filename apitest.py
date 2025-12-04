@@ -1,234 +1,3 @@
-# import requests
-# import json
-# import base64
-# from PIL import Image
-# from io import BytesIO
-# import os
-#
-#
-# class APIImageGenTester:
-#     def __init__(self, api_url):
-#         self.api_url = api_url
-#         self.results = []
-#
-#     def save_image(self, base64_string, filename):
-#         """Lưu ảnh từ base64 string"""
-#         try:
-#             img_data = base64.b64decode(base64_string)
-#             img = Image.open(BytesIO(img_data))
-#
-#             # Tạo thư mục output nếu chưa có
-#             os.makedirs("output", exist_ok=True)
-#             filepath = f"output/{filename}"
-#
-#             img.save(filepath)
-#             print(f"✅ Đã lưu ảnh: {filepath}")
-#             return filepath
-#         except Exception as e:
-#             print(f"❌ Lỗi khi lưu ảnh: {str(e)}")
-#             return None
-#
-#     def image_to_base64(self, image_path):
-#         """Chuyển ảnh thành base64 string"""
-#         try:
-#             with open(image_path, "rb") as img_file:
-#                 return base64.b64encode(img_file.read()).decode('utf-8')
-#         except Exception as e:
-#             print(f"❌ Lỗi khi đọc ảnh: {str(e)}")
-#             return None
-#
-#     def test_request(self, test_name, payload):
-#         """Gửi request và kiểm tra kết quả"""
-#         print(f"\n{'=' * 60}")
-#         print(f"🧪 TEST: {test_name}")
-#         print(f"{'=' * 60}")
-#         print(
-#             f"📤 Payload: {json.dumps({k: v if k != 'init_image' else '[BASE64_IMAGE]' for k, v in payload.items()}, indent=2)}")
-#
-#         try:
-#             response = requests.post(
-#                 self.api_url,
-#                 json=payload,
-#                 headers={"Content-Type": "application/json"},
-#                 timeout=120
-#             )
-#
-#             print(f"📊 Status Code: {response.status_code}")
-#
-#             if response.status_code == 200:
-#                 data = response.json()
-#                 print(f"✅ SUCCESS!")
-#                 print(f"📝 Enhanced Prompt: {data.get('enhanced_prompt', 'N/A')[:100]}...")
-#                 print(f"⚙️  Config Used: {json.dumps(data.get('config_used', {}), indent=2)}")
-#
-#                 # Lưu ảnh
-#                 if data.get('image_base64'):
-#                     filename = f"{test_name.replace(' ', '_').lower()}.png"
-#                     self.save_image(data['image_base64'], filename)
-#
-#                 self.results.append({
-#                     "test": test_name,
-#                     "status": "PASS",
-#                     "response": data
-#                 })
-#                 return True
-#             else:
-#                 error_data = response.json()
-#                 print(f"❌ FAILED!")
-#                 print(f"Error: {json.dumps(error_data, indent=2)}")
-#
-#                 self.results.append({
-#                     "test": test_name,
-#                     "status": "FAIL",
-#                     "error": error_data
-#                 })
-#                 return False
-#
-#         except Exception as e:
-#             print(f"❌ EXCEPTION: {str(e)}")
-#             self.results.append({
-#                 "test": test_name,
-#                 "status": "ERROR",
-#                 "error": str(e)
-#             })
-#             return False
-#
-#     def run_all_tests(self, init_image_path=None):
-#         """Chạy tất cả các test cases"""
-#         print("\n" + "=" * 60)
-#         print("🚀 BẮT ĐẦU TEST API IMAGE GENERATION")
-#         print("=" * 60)
-#
-#         # TEST 1: Text-to-Image cơ bản với prompt enhancement
-#         self.test_request(
-#             "Test 1 - Text2Img Basic with Enhancement",
-#             {
-#                 "prompt": "a beautiful sunset over mountains",
-#                 "regen_prompt": True,
-#                 "mode": "text2img",
-#                 "aspect_ratio": "16:9"
-#             }
-#         )
-#
-#         # TEST 2: Text-to-Image không enhancement
-#         self.test_request(
-#             "Test 2 - Text2Img without Enhancement",
-#             {
-#                 "prompt": "a futuristic city with flying cars, neon lights, cyberpunk style",
-#                 "regen_prompt": False,
-#                 "mode": "text2img",
-#                 "aspect_ratio": "1:1"
-#             }
-#         )
-#
-#         # TEST 3: Text-to-Image với prompt tiếng Việt
-#         self.test_request(
-#             "Test 3 - Text2Img Vietnamese Prompt",
-#             {
-#                 "prompt": "một cô gái áo dài đang đi trên cầu Nhật Bản",
-#                 "regen_prompt": True,
-#                 "mode": "text2img",
-#                 "prompt_language": "vi",
-#                 "aspect_ratio": "9:16"
-#             }
-#         )
-#
-#         # TEST 4: Text-to-Image với aspect ratio khác
-#         self.test_request(
-#             "Test 4 - Text2Img Different Aspect Ratio",
-#             {
-#                 "prompt": "a cute cat sitting on a window",
-#                 "regen_prompt": True,
-#                 "aspect_ratio": "4:3"
-#             }
-#         )
-#
-#         # TEST 5: Image-to-Image (nếu có ảnh init)
-#         if init_image_path and os.path.exists(init_image_path):
-#             init_image_b64 = self.image_to_base64(init_image_path)
-#             if init_image_b64:
-#                 self.test_request(
-#                     "Test 5 - Img2Img with Init Image",
-#                     {
-#                         "prompt": "turn this into a watercolor painting",
-#                         "regen_prompt": True,
-#                         "mode": "img2img",
-#                         "init_image": init_image_b64,
-#                         "strength": 0.7,
-#                         "aspect_ratio": "1:1"
-#                     }
-#                 )
-#
-#                 # TEST 6: Image-to-Image với strength cao hơn
-#                 self.test_request(
-#                     "Test 6 - Img2Img High Strength",
-#                     {
-#                         "prompt": "make it look like a comic book illustration",
-#                         "regen_prompt": True,
-#                         "mode": "img2img",
-#                         "init_image": init_image_b64,
-#                         "strength": 0.9
-#                     }
-#                 )
-#         else:
-#             print("\n⚠️  Bỏ qua test Image-to-Image vì không có ảnh init")
-#
-#         # TEST 7: Test error - thiếu prompt
-#         self.test_request(
-#             "Test 7 - Error Missing Prompt",
-#             {
-#                 "regen_prompt": True
-#             }
-#         )
-#
-#         # TEST 8: Test error - img2img thiếu init_image
-#         self.test_request(
-#             "Test 8 - Error Img2Img Missing Init Image",
-#             {
-#                 "prompt": "beautiful landscape",
-#                 "mode": "img2img"
-#             }
-#         )
-#
-#         # In ra kết quả tổng hợp
-#         self.print_summary()
-#
-#     def print_summary(self):
-#         """In ra tổng kết kết quả"""
-#         print("\n" + "=" * 60)
-#         print("📊 KẾT QUẢ TỔNG HỢP")
-#         print("=" * 60)
-#
-#         passed = sum(1 for r in self.results if r["status"] == "PASS")
-#         failed = sum(1 for r in self.results if r["status"] == "FAIL")
-#         errors = sum(1 for r in self.results if r["status"] == "ERROR")
-#
-#         print(f"✅ Passed: {passed}")
-#         print(f"❌ Failed: {failed}")
-#         print(f"⚠️  Errors: {errors}")
-#         print(f"📝 Total: {len(self.results)}")
-#
-#         print("\nChi tiết:")
-#         for r in self.results:
-#             status_icon = "✅" if r["status"] == "PASS" else "❌"
-#             print(f"{status_icon} {r['test']}: {r['status']}")
-#
-#
-# # ================== MAIN ==================
-# if __name__ == "__main__":
-#     API_URL = "https://autevn7nbg.execute-api.us-east-1.amazonaws.com/pro/gen"
-#
-#     # Khởi tạo tester
-#     tester = APIImageGenTester(API_URL)
-#
-#     # Chạy tất cả tests
-#     # Nếu bạn có ảnh để test img2img, thay đổi đường dẫn bên dưới
-#     # Ví dụ: tester.run_all_tests(init_image_path="path/to/your/image.png")
-#     tester.run_all_tests(init_image_path= r"C:\Users\leamo\Downloads\aaaa.jpg")
-#
-#     print("\n✨ Hoàn thành tất cả test cases!")
-#     print("📁 Các ảnh đã được lưu trong thư mục 'output/'")
-
 import requests
 import json
 import base64
@@ -236,58 +5,74 @@ from PIL import Image
 from io import BytesIO
 import os
 
+# ================== HELPER FUNCTIONS ==================
+def log_prompt_info(prompt, model_name="Claude"):
+    print(f"💡 {model_name} model note: Prompt may be truncated if > 512 tokens")
+    print(f"📜 Prompt length: {len(prompt)} characters")
 
-class APIImageGenTester:
+def resize_for_titan(img: Image.Image, target_ratio="1:1"):
+    """
+    Titan yêu cầu: width/height chia hết cho 64, trong khoảng 512-2048
+    """
+    ratio_map = {
+        "1:1": (1024, 1024),
+        "16:9": (1173, 640),
+        "3:2": (1152, 768),
+        "3:5": (768, 1280),
+    }
+    width, height = ratio_map.get(target_ratio, (1024, 1024))
+    width = min(max(512, width - width % 64), 2048)
+    height = min(max(512, height - height % 64), 2048)
+    resized_img = img.resize((width, height))
+    return resized_img, width, height
+
+def image_to_base64(image_path):
+    try:
+        with open(image_path, "rb") as f:
+            img_bytes = f.read()
+        return base64.b64encode(img_bytes).decode("utf-8")
+    except Exception as e:
+        print(f"❌ Lỗi đọc ảnh: {str(e)}")
+        return None
+
+def save_image(base64_str, filename):
+    try:
+        img_data = base64.b64decode(base64_str)
+        img = Image.open(BytesIO(img_data))
+        os.makedirs("output", exist_ok=True)
+        path = f"output/{filename}"
+        img.save(path)
+        print(f"✅ Saved image: {path} ({img.width}x{img.height})")
+        return path
+    except Exception as e:
+        print(f"❌ Lỗi lưu ảnh: {str(e)}")
+        return None
+
+# ================== MAIN TESTER CLASS ==================
+class TitanImageGenTester:
     def __init__(self, api_url):
         self.api_url = api_url
         self.results = []
 
-    def save_image(self, base64_string, filename):
-        """Lưu ảnh từ base64 string"""
-        try:
-            img_data = base64.b64decode(base64_string)
-            img = Image.open(BytesIO(img_data))
-
-            # Tạo thư mục output nếu chưa có
-            os.makedirs("output", exist_ok=True)
-            filepath = f"output/{filename}"
-
-            img.save(filepath)
-            print(f"✅ Đã lưu ảnh: {filepath} ({img.width}x{img.height})")
-            return filepath
-        except Exception as e:
-            print(f"❌ Lỗi khi lưu ảnh: {str(e)}")
-            return None
-
-    def image_to_base64(self, image_path):
-        """
-        Chuyển ảnh thành base64 string - KHÔNG resize
-        AWS Bedrock sẽ tự động scale ảnh theo init_image
-        """
-        try:
-            with open(image_path, "rb") as img_file:
-                img_bytes = img_file.read()
-                base64_str = base64.b64encode(img_bytes).decode('utf-8')
-
-                # Hiển thị thông tin ảnh
-                img = Image.open(image_path)
-                print(f"📷 Image loaded: {img.width}x{img.height} ({len(img_bytes) // 1024}KB)")
-
-                return base64_str
-        except Exception as e:
-            print(f"❌ Lỗi khi đọc ảnh: {str(e)}")
-            return None
-
     def test_request(self, test_name, payload, expected_status=200):
-        """Gửi request và kiểm tra kết quả"""
-        print(f"\n{'=' * 60}")
+        print("\n" + "="*60)
         print(f"🧪 TEST: {test_name}")
-        print(f"{'=' * 60}")
+        print("="*60)
 
-        # Hiển thị payload (ẩn base64 image)
+        # Ghi chú Claude token limit nếu có regen_prompt
+        if payload.get("regen_prompt", False):
+            prompt = ""
+            if payload.get("mode") == "text2img":
+                prompt = payload.get("prompt", "")
+            elif payload.get("mode") == "img2img":
+                prompt = payload.get("prompt", "")
+            if prompt:
+                log_prompt_info(prompt, "Claude")
+
+        # Display payload (ẩn base64)
         display_payload = {
-            k: (f"[BASE64_IMAGE - {len(v) // 1024}KB]" if k == 'init_image' and v else v)
-            for k, v in payload.items()
+            k: (f"[BASE64_IMAGE - {len(v)//1024}KB]" if k in ["init_image", "images"] and v else v)
+            for k,v in payload.items()
         }
         print(f"📤 Payload:\n{json.dumps(display_payload, indent=2, ensure_ascii=False)}")
 
@@ -295,73 +80,44 @@ class APIImageGenTester:
             response = requests.post(
                 self.api_url,
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers={"Content-Type":"application/json"},
                 timeout=120
             )
-
             print(f"📊 Status Code: {response.status_code}")
-
-            # Parse response
+            
             try:
                 data = response.json()
+                print(f"📥 Response:\n{json.dumps({k:v for k,v in data.items() if k != 'image_base64'}, indent=2, ensure_ascii=False)}")
             except:
-                data = {"error": "Cannot parse JSON", "raw": response.text[:200]}
+                data = {"error":"Cannot parse JSON", "raw": response.text[:300]}
+                print(f"📥 Response: {data}")
 
-            # Kiểm tra kết quả
             if response.status_code == expected_status:
-                if expected_status == 200:
-                    print(f"✅ SUCCESS!")
-                    print(f"📝 Enhanced Prompt: {data.get('enhanced_prompt', 'N/A')[:100]}...")
-                    print(f"⚙️  Config Used:\n{json.dumps(data.get('config_used', {}), indent=2)}")
-
-                    # Lưu ảnh
-                    if data.get('image_base64'):
-                        filename = f"{test_name.replace(' ', '_').replace('-', '_').lower()}.png"
-                        self.save_image(data['image_base64'], filename)
-                else:
-                    # Expected error
-                    print(f"✅ PASS (Expected error)")
-                    print(f"📝 Error: {data.get('error', 'N/A')}")
-
-                self.results.append({
-                    "test": test_name,
-                    "status": "PASS",
-                    "response": data
-                })
+                if expected_status == 200 and data.get("image_base64"):
+                    filename = f"{test_name.replace(' ', '_').lower()}.png"
+                    save_image(data["image_base64"], filename)
+                print(f"✅ PASS")
+                self.results.append({"test": test_name, "status":"PASS", "response":data})
                 return True
             else:
-                print(f"❌ FAILED!")
-                print(f"Expected: {expected_status}, Got: {response.status_code}")
-                print(f"Error:\n{json.dumps(data, indent=2, ensure_ascii=False)}")
-
-                self.results.append({
-                    "test": test_name,
-                    "status": "FAIL",
-                    "error": data
-                })
+                print(f"❌ FAIL: Expected {expected_status}, got {response.status_code}")
+                print(f"Error details: {data}")
+                self.results.append({"test": test_name, "status":"FAIL", "error":data})
                 return False
 
         except Exception as e:
-            print(f"❌ EXCEPTION: {str(e)}")
-            self.results.append({
-                "test": test_name,
-                "status": "ERROR",
-                "error": str(e)
-            })
+            print(f"⚠️ EXCEPTION: {str(e)}")
+            self.results.append({"test": test_name, "status":"ERROR", "error":str(e)})
             return False
 
     def run_all_tests(self, init_image_path=None):
-        """Chạy tất cả các test cases"""
-        print("\n" + "=" * 60)
-        print("🚀 BẮT ĐẦU TEST API IMAGE GENERATION")
-        print("=" * 60)
-
-        # ==================== TEXT-TO-IMAGE TESTS ====================
-        print("\n" + "=" * 60)
-        print("📝 SECTION 1: TEXT-TO-IMAGE TESTS")
-        print("=" * 60)
-
-        # TEST 1: Text-to-Image cơ bản với prompt enhancement
+        print("\n🚀 BẮT ĐẦU TESTING TITAN IMAGE GENERATOR G1 V2")
+        
+        # ================== TEXT2IMG ==================
+        print("\n" + "="*60)
+        print("📝 TEXT TO IMAGE TESTS")
+        print("="*60)
+        
         self.test_request(
             "Test-1-Text2Img-Basic-Enhancement",
             {
@@ -371,8 +127,7 @@ class APIImageGenTester:
                 "aspect_ratio": "16:9"
             }
         )
-
-        # TEST 2: Text-to-Image không enhancement
+        
         self.test_request(
             "Test-2-Text2Img-No-Enhancement",
             {
@@ -382,8 +137,7 @@ class APIImageGenTester:
                 "aspect_ratio": "1:1"
             }
         )
-
-        # TEST 3: Text-to-Image với prompt tiếng Việt
+        
         self.test_request(
             "Test-3-Text2Img-Vietnamese",
             {
@@ -395,51 +149,53 @@ class APIImageGenTester:
             }
         )
 
-        # TEST 4: Text-to-Image aspect ratio 21:9
-        self.test_request(
-            "Test-4-Text2Img-Ultrawide-21-9",
-            {
-                "prompt": "epic landscape, mountains, lake, cinematic, wide angle",
-                "regen_prompt": True,
-                "aspect_ratio": "21:9"
-            }
-        )
-
-        # ==================== IMAGE-TO-IMAGE TESTS (TITAN) ====================
+        # ================== IMG2IMG ==================
         if init_image_path and os.path.exists(init_image_path):
-            print("\n" + "=" * 60)
-            print("🖼️  SECTION 2: IMAGE-TO-IMAGE TESTS (Amazon Titan)")
-            print("=" * 60)
+            print("\n" + "="*60)
+            print("🖼️ IMAGE TO IMAGE TESTS (FIXED)")
+            print("="*60)
+            
+            init_b64 = image_to_base64(init_image_path)
+            if not init_b64:
+                print("❌ Không thể load init image, bỏ qua img2img tests")
+            else:
+                img = Image.open(init_image_path)
+                
+                # Test với 1:1
+                resized_img, width, height = resize_for_titan(img, "1:1")
+                buf = BytesIO()
+                resized_img.save(buf, format="PNG")
+                init_b64_resized = base64.b64encode(buf.getvalue()).decode("utf-8")
 
-            init_image_b64 = self.image_to_base64(init_image_path)
-            if init_image_b64:
-                # TEST 5: Img2Img với strength thấp (giữ nhiều chi tiết gốc)
+                # ✅ Test-5: Low Similarity (giống ảnh gốc)
                 self.test_request(
-                    "Test-5-Img2Img-Low-Strength",
+                    "Test-5-Img2Img-Low-Similarity-Watercolor",
                     {
                         "prompt": "turn this into a watercolor painting",
+                        "negative_prompt": "blurry, low quality, distorted, watermark, text, ugly, deformed",
                         "regen_prompt": True,
                         "mode": "img2img",
-                        "init_image": init_image_b64,
-                        "strength": 0.4,
+                        "init_image": init_b64_resized,
+                        "similarity_strength": 0.7,  # ✅ ĐÚNG tên tham số
                         "aspect_ratio": "1:1"
                     }
                 )
 
-                # TEST 6: Img2Img với strength cao (thay đổi mạnh)
+                # ✅ Test-6: High Similarity (khác ảnh gốc nhiều)
                 self.test_request(
-                    "Test-6-Img2Img-High-Strength",
+                    "Test-6-Img2Img-High-Similarity-Comic",
                     {
                         "prompt": "make it look like a comic book illustration, bold colors",
+                        "negative_prompt": "blurry, low quality, distorted, watermark, text, ugly, deformed",
                         "regen_prompt": True,
                         "mode": "img2img",
-                        "init_image": init_image_b64,
-                        "strength": 0.8,
-                        "aspect_ratio": "16:9"
+                        "init_image": init_b64_resized,
+                        "similarity_strength": 0.3,  # ✅ Giá trị thấp = khác nhiều
+                        "aspect_ratio": "1:1"
                     }
                 )
 
-                # TEST 7: Img2Img với negative prompt
+                # ✅ Test-7: Với Negative Prompt
                 self.test_request(
                     "Test-7-Img2Img-With-Negative-Prompt",
                     {
@@ -447,61 +203,36 @@ class APIImageGenTester:
                         "negative_prompt": "blurry, low quality, distorted, watermark, text, ugly, deformed",
                         "regen_prompt": True,
                         "mode": "img2img",
-                        "init_image": init_image_b64,
-                        "strength": 0.6,
-                        "aspect_ratio": "4:3"
+                        "init_image": init_b64_resized,
+                        "similarity_strength": 0.5,
+                        "aspect_ratio": "1:1"
                     }
                 )
 
-                # TEST 8: Img2Img không enhancement + negative prompt
-                self.test_request(
-                    "Test-8-Img2Img-No-Enhancement-Negative",
-                    {
-                        "prompt": "oil painting style, artistic, masterpiece, detailed brush strokes",
-                        "negative_prompt": "photograph, realistic, modern, digital art",
-                        "regen_prompt": False,
-                        "mode": "img2img",
-                        "init_image": init_image_b64,
-                        "strength": 0.7
-                    }
-                )
+                # ✅ Test-8: Aspect ratio khác (16:9)
+                resized_img_16_9, width_16_9, height_16_9 = resize_for_titan(img, "16:9")
+                buf_16_9 = BytesIO()
+                resized_img_16_9.save(buf_16_9, format="PNG")
+                init_b64_16_9 = base64.b64encode(buf_16_9.getvalue()).decode("utf-8")
 
-                # TEST 9: Img2Img với prompt tiếng Việt + negative prompt
                 self.test_request(
-                    "Test-9-Img2Img-Vietnamese-Negative",
+                    "Test-8-Img2Img-Aspect-16-9",
                     {
-                        "prompt": "phong cảnh Việt Nam đẹp, sống động, màu sắc rực rỡ",
-                        "negative_prompt": "dark, gloomy, sad, depressing",
+                        "prompt": "epic cinematic landscape, dramatic lighting",
+                        "negative_prompt": "blurry, low quality, distorted, watermark, text, ugly, deformed",
                         "regen_prompt": True,
                         "mode": "img2img",
-                        "init_image": init_image_b64,
-                        "prompt_language": "vi",
-                        "strength": 0.5,
-                        "aspect_ratio": "9:16"
+                        "init_image": init_b64_16_9,
+                        "similarity_strength": 0.6,
+                        "aspect_ratio": "16:9"
                     }
                 )
 
-                # TEST 10: Img2Img strength = 0.2 (giữ gần như nguyên)
-                self.test_request(
-                    "Test-10-Img2Img-Very-Low-Strength",
-                    {
-                        "prompt": "enhance colors and lighting",
-                        "regen_prompt": True,
-                        "mode": "img2img",
-                        "init_image": init_image_b64,
-                        "strength": 0.2
-                    }
-                )
-        else:
-            print("\n⚠️  Bỏ qua IMAGE-TO-IMAGE tests (không có init image)")
-            print(f"💡 Để test img2img, chạy: tester.run_all_tests(init_image_path='your_image.jpg')")
-
-        # ==================== ERROR HANDLING TESTS ====================
-        print("\n" + "=" * 60)
-        print("❌ SECTION 3: ERROR HANDLING TESTS")
-        print("=" * 60)
-
-        # TEST 11: Error - Missing prompt
+        # ================== ERROR HANDLING ==================
+        print("\n" + "="*60)
+        print("🚨 ERROR HANDLING TESTS")
+        print("="*60)
+        
         self.test_request(
             "Test-11-Error-Missing-Prompt",
             {
@@ -510,75 +241,60 @@ class APIImageGenTester:
             },
             expected_status=400
         )
-
-        # TEST 12: Error - Img2Img missing init_image
+        
         self.test_request(
-            "Test-12-Error-Img2Img-No-Init",
+            "Test-12-Error-Invalid-Mode",
             {
-                "prompt": "beautiful landscape",
-                "mode": "img2img"
+                "prompt": "test",
+                "mode": "invalid_mode"
             },
             expected_status=400
         )
 
-        # TEST 13: Error - Invalid strength (ngoài 0-1)
-        if init_image_path and os.path.exists(init_image_path):
-            init_image_b64 = self.image_to_base64(init_image_path)
-            if init_image_b64:
-                self.test_request(
-                    "Test-13-Error-Invalid-Strength",
-                    {
-                        "prompt": "test",
-                        "mode": "img2img",
-                        "init_image": init_image_b64,
-                        "strength": 1.5  # Invalid (> 1.0)
-                    },
-                    expected_status=500  # Titan sẽ clamp về 1.0 hoặc báo lỗi
-                )
-
-        # In ra kết quả tổng hợp
-        self.print_summary()
-
     def print_summary(self):
-        """In ra tổng kết kết quả"""
-        print("\n" + "=" * 60)
+        print("\n" + "="*60)
         print("📊 KẾT QUẢ TỔNG HỢP")
-        print("=" * 60)
-
-        passed = sum(1 for r in self.results if r["status"] == "PASS")
-        failed = sum(1 for r in self.results if r["status"] == "FAIL")
-        errors = sum(1 for r in self.results if r["status"] == "ERROR")
+        print("="*60)
+        
+        passed = sum(1 for r in self.results if r["status"]=="PASS")
+        failed = sum(1 for r in self.results if r["status"]=="FAIL")
+        errors = sum(1 for r in self.results if r["status"]=="ERROR")
         total = len(self.results)
-
+        
         print(f"✅ Passed: {passed}/{total}")
         print(f"❌ Failed: {failed}/{total}")
-        print(f"⚠️  Errors: {errors}/{total}")
-        print(f"📈 Success Rate: {(passed / total * 100):.1f}%")
-
-        print("\n" + "-" * 60)
-        print("Chi tiết từng test:")
-        print("-" * 60)
-        for r in self.results:
-            status_icon = "✅" if r["status"] == "PASS" else "❌" if r["status"] == "FAIL" else "⚠️"
-            print(f"{status_icon} {r['test']}: {r['status']}")
-
+        print(f"⚠️ Errors: {errors}/{total}")
+        
+        if failed > 0 or errors > 0:
+            print("\n" + "="*60)
+            print("❌ FAILED/ERROR TESTS:")
+            print("="*60)
+            for r in self.results:
+                if r["status"] in ["FAIL", "ERROR"]:
+                    print(f"\n{r['test']}:")
+                    print(f"  Status: {r['status']}")
+                    if "error" in r:
+                        print(f"  Error: {json.dumps(r['error'], indent=4, ensure_ascii=False)}")
 
 # ================== MAIN ==================
 if __name__ == "__main__":
-    API_URL = "https://autevn7nbg.execute-api.us-east-1.amazonaws.com/pro/gen"
-
-    # Khởi tạo tester
-    tester = APIImageGenTester(API_URL)
-
-    # Chạy tất cả tests
-    # 🔥 QUAN TRỌNG: Thay đường dẫn ảnh của bạn ở đây
-    tester.run_all_tests(init_image_path=r"C:\Users\leamo\Downloads\aaaa.jpg")
-
-    print("\n" + "=" * 60)
-    print("✨ HOÀN THÀNH TẤT CẢ TEST CASES!")
-    print("=" * 60)
-    print("📁 Các ảnh đã được lưu trong thư mục 'output/'")
-    print("\n💡 Test Coverage:")
-    print("   ✅ Text2Img tests (1-4): Stable Diffusion")
-    print("   ✅ Img2Img tests (5-10): Amazon Titan with negative prompts")
-    print("   ✅ Error tests (11-13): Validation checks")
+    API_URL = ""
+    
+    print("="*60)
+    print("🎨 TITAN IMAGE GENERATOR G1 V2 - API TESTER")
+    print("="*60)
+    print(f"API Endpoint: {API_URL}")
+    
+    tester = TitanImageGenTester(API_URL)
+    
+    # Thay đổi đường dẫn ảnh test của bạn ở đây
+    INIT_IMAGE_PATH = r"C:\Users\leamo\Downloads\aaaa.jpg"
+    
+    if os.path.exists(INIT_IMAGE_PATH):
+        print(f"✅ Init image found: {INIT_IMAGE_PATH}")
+    else:
+        print(f"⚠️ Init image not found: {INIT_IMAGE_PATH}")
+        print("   IMG2IMG tests will be skipped")
+    
+    tester.run_all_tests(init_image_path=INIT_IMAGE_PATH)
+    tester.print_summary()
